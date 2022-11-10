@@ -28,6 +28,16 @@ impl MoovBox {
         for trak in self.traks.iter() {
             size += trak.box_size();
         }
+
+        // TODO add udta
+        // if let Some(ref udta) = self.udta {
+        //     size += udta.box_size();
+        // }
+
+        if let Some(ref mvex) = self.mvex {
+            size += mvex.box_size();
+        }
+
         size
     }
 }
@@ -114,6 +124,16 @@ impl<W: Write> WriteBox<&mut W> for MoovBox {
         for trak in self.traks.iter() {
             trak.write_box(writer)?;
         }
+
+        // TODO write udta
+        // if let Some(udta) = &self.udta {
+        //     udta.write_box(writer)?;
+        // }
+
+        if let Some(mvex) = &self.mvex {
+            mvex.write_box(writer)?;
+        }
+
         Ok(0)
     }
 }

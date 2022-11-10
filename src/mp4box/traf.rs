@@ -94,6 +94,10 @@ impl<W: Write> WriteBox<&mut W> for TrafBox {
 
         self.tfhd.write_box(writer)?;
 
+        if let Some(ref trun) = self.trun {
+            trun.write_box(writer)?;
+        }
+
         Ok(size)
     }
 }

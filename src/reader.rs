@@ -88,10 +88,12 @@ impl<R: Read + Seek> Mp4Reader<R> {
 
         // Update tracks if any fragmented (moof) boxes are found.
         if !moofs.is_empty() {
-            let mut default_sample_duration = 0;
+            let mut mp = HashMap::new();
             if let Some(ref moov) = moov {
                 if let Some(ref mvex) = &moov.mvex {
-                    default_sample_duration = mvex.trex.default_sample_duration
+                    for trex in &mvex.trexs {
+                        mp.insert(trex.track_id, trex.default_sample_duration);
+                    }
                 }
             }
 
@@ -99,7 +101,7 @@ impl<R: Read + Seek> Mp4Reader<R> {
                 for traf in moof.trafs.iter() {
                     let track_id = traf.tfhd.track_id;
                     if let Some(track) = tracks.get_mut(&track_id) {
-                        track.default_sample_duration = default_sample_duration;
+                        track.default_sample_duration = mp.get(&track_id).cloned().unwrap_or(0);
                         track.trafs.push(traf.clone())
                     } else {
                         return Err(Error::TrakNotFound(track_id));

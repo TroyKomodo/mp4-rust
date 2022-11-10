@@ -9,16 +9,50 @@ pub struct TfhdBox {
     pub version: u8,
     pub flags: u32,
     pub track_id: u32,
-    pub base_data_offset: u64,
+    pub base_data_offset: Option<u64>,
+    pub sample_description_index: Option<u32>,
+    pub default_sample_duration: Option<u32>,
+    pub default_sample_size: Option<u32>,
+    pub default_sample_flags: Option<u32>,
 }
 
 impl TfhdBox {
+    pub const FLAG_BASE_DATA_OFFSET: u32 = 0x000001;
+    pub const FLAG_SAMPLE_DESC_INDEX: u32 = 0x000002;
+    pub const FLAG_DEFAULT_SAMPLE_DURATION: u32 = 0x000008;
+    pub const FLAG_DEFAULT_SAMPLE_SIZE: u32 = 0x000010;
+    pub const FLAG_DEFAULT_SAMPLE_FLAGS: u32 = 0x000020;
+    pub const FLAG_DURATION_IS_EMPTY: u32 = 0x010000;
+    pub const FLAG_DEFAULT_BASE_IS_MOOF: u32 = 0x020000;
+
     pub fn get_type(&self) -> BoxType {
         BoxType::TfhdBox
     }
 
     pub fn get_size(&self) -> u64 {
-        HEADER_SIZE + HEADER_EXT_SIZE + 4 + 8
+        let mut size = HEADER_SIZE + HEADER_EXT_SIZE + 4;
+
+        if self.flags & Self::FLAG_BASE_DATA_OFFSET != 0 {
+            size += 8;
+        }
+
+        if self.flags & Self::FLAG_SAMPLE_DESC_INDEX != 0 {
+            size += 4;
+        }
+
+        if self.flags & Self::FLAG_DEFAULT_SAMPLE_DURATION != 0 {
+            size += 4;
+        }
+
+        if self.flags & Self::FLAG_DEFAULT_SAMPLE_SIZE != 0 {
+            size += 4;
+        }
+
+        if self.flags & Self::FLAG_DEFAULT_SAMPLE_FLAGS != 0 {
+            size += 4;
+        }
+
+        size
     }
 }
 
@@ -47,7 +81,36 @@ impl<R: Read + Seek> ReadBox<&mut R> for TfhdBox {
 
         let (version, flags) = read_box_header_ext(reader)?;
         let track_id = reader.read_u32::<BigEndian>()?;
-        let base_data_offset = reader.read_u64::<BigEndian>()?;
+        
+        let base_data_offset = if flags & Self::FLAG_BASE_DATA_OFFSET != 0 {
+            Some(reader.read_u64::<BigEndian>()?)
+        } else {
+            None
+        };
+
+        let sample_description_index = if flags & Self::FLAG_SAMPLE_DESC_INDEX != 0 {
+            Some(reader.read_u32::<BigEndian>()?)
+        } else {
+            None
+        };
+
+        let default_sample_duration = if flags & Self::FLAG_DEFAULT_SAMPLE_DURATION != 0 {
+            Some(reader.read_u32::<BigEndian>()?)
+        } else {
+            None
+        };
+
+        let default_sample_size = if flags & Self::FLAG_DEFAULT_SAMPLE_SIZE != 0 {
+            Some(reader.read_u32::<BigEndian>()?)
+        } else {
+            None
+        };
+
+        let default_sample_flags = if flags & Self::FLAG_DEFAULT_SAMPLE_FLAGS != 0 {
+            Some(reader.read_u32::<BigEndian>()?)
+        } else {
+            None
+        };
 
         skip_bytes_to(reader, start + size)?;
 
@@ -56,6 +119,10 @@ impl<R: Read + Seek> ReadBox<&mut R> for TfhdBox {
             flags,
             track_id,
             base_data_offset,
+            sample_description_index,
+            default_sample_duration,
+            default_sample_size,
+            default_sample_flags,
         })
     }
 }
@@ -67,7 +134,46 @@ impl<W: Write> WriteBox<&mut W> for TfhdBox {
 
         write_box_header_ext(writer, self.version, self.flags)?;
         writer.write_u32::<BigEndian>(self.track_id)?;
-        writer.write_u64::<BigEndian>(self.base_data_offset)?;
+
+        if self.flags & Self::FLAG_BASE_DATA_OFFSET != 0 {
+            if let Some(base_data_offset) = self.base_data_offset {
+                writer.write_u64::<BigEndian>(base_data_offset)?;
+            } else {
+                return Err(Error::InvalidData("base_data_offset is not set"));
+            }
+        }
+
+        if self.flags & Self::FLAG_SAMPLE_DESC_INDEX != 0 {
+            if let Some(sample_description_index) = self.sample_description_index {
+                writer.write_u32::<BigEndian>(sample_description_index)?;
+            } else {
+                return Err(Error::InvalidData("sample_description_index is not set"));
+            }
+        }
+
+        if self.flags & Self::FLAG_DEFAULT_SAMPLE_DURATION != 0 {
+            if let Some(default_sample_duration) = self.default_sample_duration {
+                writer.write_u32::<BigEndian>(default_sample_duration)?;
+            } else {
+                return Err(Error::InvalidData("default_sample_duration is not set"));
+            }
+        }
+
+        if self.flags & Self::FLAG_DEFAULT_SAMPLE_SIZE != 0 {
+            if let Some(default_sample_size) = self.default_sample_size {
+                writer.write_u32::<BigEndian>(default_sample_size)?;
+            } else {
+                return Err(Error::InvalidData("default_sample_size is not set"));
+            }
+        }
+
+        if self.flags & Self::FLAG_DEFAULT_SAMPLE_FLAGS != 0 {
+            if let Some(default_sample_flags) = self.default_sample_flags {
+                writer.write_u32::<BigEndian>(default_sample_flags)?;
+            } else {
+                return Err(Error::InvalidData("default_sample_flags is not set"));
+            }
+        }
 
         Ok(size)
     }
@@ -85,8 +191,13 @@ mod tests {
             version: 0,
             flags: 0,
             track_id: 1,
-            base_data_offset: 0,
+            base_data_offset: None,
+            sample_description_index: None,
+            default_sample_duration: None,
+            default_sample_size: None,
+            default_sample_flags: None,
         };
+
         let mut buf = Vec::new();
         src_box.write_box(&mut buf).unwrap();
         assert_eq!(buf.len(), src_box.box_size() as usize);
