@@ -103,6 +103,7 @@ pub mod udta;
 pub mod vmhd;
 pub mod vp09;
 pub mod vpcc;
+pub mod tfdt;
 
 pub use emsg::EmsgBox;
 pub use ftyp::FtypBox;
@@ -194,7 +195,8 @@ boxtype! {
     NameBox => 0xa96e616d,
     DayBox => 0xa9646179,
     CovrBox => 0x636f7672,
-    DescBox => 0x64657363
+    DescBox => 0x64657363,
+    TfdtBox => 0x74666474
 }
 
 pub trait Mp4Box: Sized {

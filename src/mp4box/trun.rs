@@ -10,16 +10,63 @@ pub struct TrunBox {
     pub flags: u32,
     pub sample_count: u32,
     pub data_offset: Option<i32>,
-    pub first_sample_flags: Option<u32>,
+    pub first_sample_flags: Option<SampleFlags>,
 
     #[serde(skip_serializing)]
     pub sample_durations: Vec<u32>,
     #[serde(skip_serializing)]
     pub sample_sizes: Vec<u32>,
     #[serde(skip_serializing)]
-    pub sample_flags: Vec<u32>,
+    pub sample_flags: Vec<SampleFlags>,
     #[serde(skip_serializing)]
     pub sample_cts: Vec<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Default, Serialize)]
+pub struct SampleFlags {
+	pub is_leading: u8,             // u2
+	pub sample_depends_on: u8,      // u2
+	pub sample_is_depdended_on: u8, // u2
+	pub sample_has_redundancy: u8,  // u2
+	pub sample_padding_value: u8,   // u3
+	pub sample_is_non_sync_sample: bool,
+	pub sample_degradation_priority: u16,
+}
+
+impl SampleFlags {
+	fn to_u32(&self) -> u32 {
+		(u32::from(self.is_leading) << 26) |
+			(u32::from(self.sample_depends_on) << 24) |
+			(u32::from(self.sample_is_depdended_on) << 22) |
+			(u32::from(self.sample_has_redundancy) << 20) |
+			(u32::from(self.sample_padding_value) << 17) |
+			((self.sample_is_non_sync_sample as u32) << 16) |
+			u32::from(self.sample_degradation_priority)
+	}
+
+    fn from_u32(v: u32) -> Self {
+        SampleFlags {
+            is_leading: ((v >> 26) & 0x3) as u8,
+            sample_depends_on: ((v >> 24) & 0x3) as u8,
+            sample_is_depdended_on: ((v >> 22) & 0x3) as u8,
+            sample_has_redundancy: ((v >> 20) & 0x3) as u8,
+            sample_padding_value: ((v >> 17) & 0x7) as u8,
+            sample_is_non_sync_sample: ((v >> 16) & 0x1) != 0,
+            sample_degradation_priority: (v & 0xffff) as u16,
+        }
+    }
+}
+
+impl From<u32> for SampleFlags {
+    fn from(v: u32) -> Self {
+        SampleFlags::from_u32(v)
+    }
+}
+
+impl From<SampleFlags> for u32 {
+    fn from(v: SampleFlags) -> Self {
+        v.to_u32()
+    }
 }
 
 impl TrunBox {
@@ -92,7 +139,7 @@ impl<R: Read + Seek> ReadBox<&mut R> for TrunBox {
         };
 
         let first_sample_flags = if TrunBox::FLAG_FIRST_SAMPLE_FLAGS & flags > 0 {
-            Some(reader.read_u32::<BigEndian>()?)
+            Some(SampleFlags::from_u32(reader.read_u32::<BigEndian>()?))
         } else {
             None
         };
@@ -113,7 +160,7 @@ impl<R: Read + Seek> ReadBox<&mut R> for TrunBox {
             }
 
             if TrunBox::FLAG_SAMPLE_FLAGS & flags > 0 {
-                let sample_flag = reader.read_u32::<BigEndian>()?;
+                let sample_flag = SampleFlags::from_u32(reader.read_u32::<BigEndian>()?);
                 sample_flags.push(sample_flag);
             }
 
@@ -150,8 +197,8 @@ impl<W: Write> WriteBox<&mut W> for TrunBox {
         if let Some(v) = self.data_offset {
             writer.write_i32::<BigEndian>(v)?;
         }
-        if let Some(v) = self.first_sample_flags {
-            writer.write_u32::<BigEndian>(v)?;
+        if let Some(v) = &self.first_sample_flags {
+            writer.write_u32::<BigEndian>(v.to_u32())?;
         }
         if self.sample_count != self.sample_sizes.len() as u32 {
             return Err(Error::InvalidData("sample count out of sync"));
@@ -164,7 +211,7 @@ impl<W: Write> WriteBox<&mut W> for TrunBox {
                 writer.write_u32::<BigEndian>(self.sample_sizes[i])?;
             }
             if TrunBox::FLAG_SAMPLE_FLAGS & self.flags > 0 {
-                writer.write_u32::<BigEndian>(self.sample_flags[i])?;
+                writer.write_u32::<BigEndian>(self.sample_flags[i].to_u32())?;
             }
             if TrunBox::FLAG_SAMPLE_CTS & self.flags > 0 {
                 writer.write_u32::<BigEndian>(self.sample_cts[i])?;
@@ -218,7 +265,7 @@ mod tests {
             data_offset: None,
             sample_count: 9,
             sample_sizes: vec![1165, 11, 11, 8545, 10126, 10866, 9643, 9351, 7730],
-            sample_flags: vec![1165, 11, 11, 8545, 10126, 10866, 9643, 9351, 7730],
+            sample_flags: vec![1165.into(), 11.into(), 11.into(), 8545.into(), 10126.into(), 10866.into(), 9643.into(), 9351.into(), 7730.into()],
             first_sample_flags: None,
             sample_durations: vec![1165, 11, 11, 8545, 10126, 10866, 9643, 9351, 7730],
             sample_cts: vec![1165, 11, 11, 8545, 10126, 10866, 9643, 9351, 7730],
